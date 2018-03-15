@@ -1,5 +1,3 @@
-library(tidyverse)
-library(lubridate)
 
 # Set theme
 tawasul_theme <- theme_minimal() +
@@ -15,6 +13,8 @@ tawasul.cases <- do.call("rbind", tawasul.cases)
 names(tawasul.cases)[names(tawasul.cases) == "STATUS"] <- "STATUS_CODE"
 names(tawasul.cases)[names(tawasul.cases) == "MINISTRY"] <- "MINISTRY_CODE"
 names(tawasul.cases)[names(tawasul.cases) == "NAME_EN"] <- "MINISTRY"
+names(tawasul.cases)[names(tawasul.cases) == "ESCALATION_TO_OFDPM_CHECK"] <- "ESCALATED_TO_OFDPM"
+names(tawasul.cases)[names(tawasul.cases) == "IS_ESCALATED_TO_MINISTER"] <- "ESCALATED_TO_MINISTER"
 
 # Remove (CIO, Telecommunication Regulatory Authority and Middle Area Municipality)
 tawasul.cases <- tawasul.cases %>% 
@@ -77,6 +77,11 @@ tawasul.cases <- tawasul.cases %>%
   mutate(REQUEST_TYPE = ifelse(REQUEST_TYPE == 1, "Complaint",
                                ifelse(REQUEST_TYPE == 2, "Suggestion",
                                       "Enquiry")))
+# Suggestion staus
+tawasul.cases <- tawasul.cases %>% 
+  mutate(SUGGESTION_STATUS = ifelse(STATUS_CODE == 31, "Doable",
+                                    ifelse(STATUS_CODE == 32, "Not doable",
+                                           "Other")))
 
 # Channel
 tawasul.cases$COMPLAINT_CHANNEL <- tawasul.cases$COMPLAINT_CHANNEL %>% 
@@ -103,22 +108,11 @@ tawasul.cases$COMPLAINT_CHANNEL <- tawasul.cases$COMPLAINT_CHANNEL %>%
 #tawasul.lookups %>% filter(MINISTRY_ID == tawasul.cases$CHANNEL, LOOKUP_ID == tawasul.cases$CATEGORY, CATEGORY == 2) %>% select(DESC_EN, CATEGORY)
 
 # Escalation
-tawasul.cases$ESCALATION_TO_OFDPM_CHECK <- tawasul.cases$ESCALATION_TO_OFDPM_CHECK %>% 
+tawasul.cases$ESCALATED_TO_OFDPM  <- tawasul.cases$ESCALATED_TO_OFDPM  %>% 
   recode("0" = 0,
          "1" = 1,
          .default = 0)
 
-tawasul.cases <- tawasul.cases %>% 
-  gather(TYPE_OF_ESCALATION, IS_ESCALATED, IS_ESCALATED_TO_MINISTER,
-         ESCALATION_TO_OFDPM_CHECK, convert = TRUE)
-
-tawasul.cases$TYPE_OF_ESCALATION <- tawasul.cases$TYPE_OF_ESCALATION %>% 
-  recode("IS_ESCALATED_TO_MINISTER" = "Minister",
-         "ESCALATION_TO_OFDPM_CHECK" = "OFDBM")
-
-tawasul.cases$IS_ESCALATED <- tawasul.cases$IS_ESCALATED %>% 
-  recode("0" = "Not Escalated",
-         "1" = "Escalated")
 
 # Working on SLA
 # Create with/out SLA
@@ -126,7 +120,7 @@ tawasul.cases <- tawasul.cases %>%
   mutate(SLA_STATUS = ifelse(LAST_UPDATE > (CREATE_DATE + SLA_ASSIGNED + 
                                               ((CUST_FEEDBACK_TIME_IN_MIN + 
                                                   RFI_FEEDBACK_TIME_IN_MIN) / (60 * 24))),
-                                                             "Exceeded SLA", "Within SLA")) %>% 
+                             "Exceeded SLA", "Within SLA")) %>% 
   unite("SLA_DESC", c("SLA_STATUS", "PRIORITY"), sep = " - ", remove = FALSE)
 
 # SLA Expectations
@@ -143,7 +137,7 @@ tawasul.cases <- tawasul.cases %>% left_join(SLA_for_exp)
 
 # Calculate Performance
 calculatePerf <- function(LAST_UPDATE, CREATE_DATE, CUST_FEEDBACK_TIME_IN_MIN, 
-                         RFI_FEEDBACK_TIME_IN_MIN, PRIORITY, SLA_CRITICAL, SLA_NON_CRITICAL) {
+                          RFI_FEEDBACK_TIME_IN_MIN, PRIORITY, SLA_CRITICAL, SLA_NON_CRITICAL) {
   totalMins <- difftime(LAST_UPDATE, CREATE_DATE, 
                         units = "mins") - (CUST_FEEDBACK_TIME_IN_MIN + 
                                              RFI_FEEDBACK_TIME_IN_MIN)
@@ -183,11 +177,11 @@ tawasul <- tawasul.cases %>%
 
 varsToFactor <- c("CUSTOMER_TYPE", "WAY_TO_CONTACT", "SLA_DESC", "PRIORITY",
                   "REQUEST_TYPE", "COMPLAINT_CHANNEL", "STATUS_DESC", 
-                  "STATUS", "MINISTRY", "PERFORMANCE", "IS_ESCALATED")
+                  "STATUS", "MINISTRY", "PERFORMANCE", "ESCALATED_TO_MINISTER",
+                  "ESCALATED_TO_OFDPM")
 
 tawasul[, varsToFactor] <- lapply(tawasul[, varsToFactor], factor)
 
 # Min and Max dates
 minDate <- min(tawasul$CREATE_DATE)
 maxDate <- max(tawasul$CREATE_DATE)
-
